@@ -1,6 +1,6 @@
 # Short Order
 
-A 3D diner cooking game built with [three.js](https://threejs.org/). Run the line through a three-minute lunch rush, cooking either **burgers** or **pizza**, and earn the biggest till.
+A 3D diner cooking game built with [three.js](https://threejs.org/). Run the line through a three-minute lunch rush, cooking **burgers**, **pizza** or **sushi**, and earn the biggest till.
 
 ## Modes
 
@@ -11,8 +11,22 @@ A 3D diner cooking game built with [three.js](https://threejs.org/). Run the lin
 ## How to play
 
 1. Read the tickets on the rail. The bar under each ticket is the customer's patience.
-2. Grab food from the crates. Chop or roll it on a board. Grill patties or bake pizzas, and pull them before they burn.
-3. Build the order on a plate or tray and serve it at the pass. Fast service earns bigger tips.
+2. Grab food from the crates. Chop, slice or roll it on a board. Grill patties, cook rice or bake pizzas, and pull them before they burn (or the rice turns to mush).
+3. Build the order on a plate, tray or platter and serve it at the pass. Fast service earns bigger tips.
+
+### Sushi
+
+Cook rice in the rice cookers, slice salmon, tuna and cucumber on the boards, and
+build each order on a wooden platter. Rice and nori make a roll, rice on its own
+makes nigiri, and fish without rice is sashimi.
+
+| Order | Ingredients | Price |
+| --- | --- | --- |
+| Salmon Nigiri | rice, salmon | $9 |
+| Tuna Nigiri | rice, tuna | $10 |
+| Sashimi Duo | salmon, tuna | $11 |
+| Cucumber Roll | rice, nori, cucumber | $12 |
+| Dragon Roll | rice, nori, salmon, tuna, cucumber | $17 |
 
 ## Running it
 

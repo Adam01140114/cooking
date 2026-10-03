@@ -243,9 +243,10 @@ details.how summary{cursor:pointer;font-weight:900;color:var(--ink)}
     <h1 class="title">Short Order</h1>
     <p class="sub">Run the line at a tiny corner diner. Tickets come in hot. Cook them before the customers lose patience, and earn the biggest till.</p>
     <p class="q">What do you want to cook?</p>
-    <div class="opts two" id="dishOpts">
+    <div class="opts three" id="dishOpts">
       <button class="opt" data-dish="burger" aria-pressed="true"><span class="oi" id="oiBurger"></span><b>Burgers</b><span>Grill patties, chop veg, stack buns.</span></button>
       <button class="opt" data-dish="pizza" aria-pressed="false"><span class="oi" id="oiPizza"></span><b>Pizza</b><span>Roll dough, top it, bake it in the deck oven.</span></button>
+      <button class="opt" data-dish="sushi" aria-pressed="false"><span class="oi" id="oiSushi"></span><b>Sushi</b><span>Cook rice, slice fish, roll maki and nigiri.</span></button>
     </div>
     <p class="q">How are you playing?</p>
     <div class="opts three">
@@ -257,8 +258,8 @@ details.how summary{cursor:pointer;font-weight:900;color:var(--ink)}
       <summary>How to play</summary>
       <ol class="steps">
         <li><span>Read the tickets on the rail. The bar under each one is the customer's patience.</span></li>
-        <li><span>Grab food from the crates. Chop or roll it on a board. Grill patties or bake pizzas, and pull them out before they burn.</span></li>
-        <li><span>Build the order on a plate or tray and serve it at the pass. Fast service earns bigger tips.</span></li>
+        <li><span>Grab food from the crates. Chop, slice or roll it on a board. Grill patties, cook rice or bake pizzas, and pull them out before they spoil.</span></li>
+        <li><span>Build the order on a plate, tray or platter and serve it at the pass. Fast service earns bigger tips.</span></li>
       </ol>
     </details>
     <p class="best" id="bestLine" style="margin:12px 0 0"></p>
@@ -338,12 +339,12 @@ const SHIFT = 180;
 const COOK_DONE = 5, BURN_WARN = 9.5, COOK_BURN = 13;
 const PZ_DONE = 6, PZ_WARN = 11, PZ_BURN = 14.5;
 const CHOPS = 4;
-const STAR_AT = {burger:[70,150,230], pizza:[60,135,210]};
+const STAR_AT = {burger:[70,150,230], pizza:[60,135,210], sushi:[65,140,220]};
 const PLAYER = [{name:'Player 1', color:'#2f7d74'}, {name:'Player 2', color:'#e4553b'}];
 
 const INGR = {
   bun:{label:'bun', take:'Take a bun', crate:'BUNS'},
-  patty:{label:'patty', take:'Take a raw patty', crate:'PATTIES', cook:true},
+  patty:{label:'patty', take:'Take a raw patty', crate:'PATTIES', cook:true, cooked:['raw patty','cooked patty','burnt patty'], cookFirst:'Cook the patty on the grill first', ruined:'That patty is burnt. Bin it.'},
   lettuce:{label:'lettuce', take:'Take a head of lettuce', crate:'LETTUCE', prep:'chop', prepped:'chopped lettuce'},
   tomato:{label:'tomato', take:'Take a tomato', crate:'TOMATOES', prep:'chop', prepped:'sliced tomato'},
   cheese:{label:'cheese slice', take:'Take a cheese slice', crate:'CHEESE'},
@@ -352,10 +353,17 @@ const INGR = {
   mozz:{label:'mozzarella', take:'Grab mozzarella', crate:'MOZZARELLA'},
   pepperoni:{label:'pepperoni', take:'Take pepperoni', crate:'PEPPERONI'},
   mushroom:{label:'mushrooms', take:'Take mushrooms', crate:'MUSHROOMS', prep:'chop', prepped:'sliced mushrooms'},
+  rice:{label:'rice', take:'Scoop some raw rice', crate:'RICE', cook:true, cooked:['raw rice','sushi rice','mushy rice'], cookFirst:'Cook the rice in a rice cooker first', ruined:'That rice is mush. Bin it.'},
+  nori:{label:'nori sheet', take:'Take a nori sheet', crate:'NORI'},
+  salmon:{label:'salmon', take:'Take a salmon fillet', crate:'SALMON', prep:'slice', prepped:'sliced salmon'},
+  tuna:{label:'tuna', take:'Take a tuna fillet', crate:'TUNA', prep:'slice', prepped:'sliced tuna'},
+  cucumber:{label:'cucumber', take:'Take a cucumber', crate:'CUCUMBER', prep:'slice', prepped:'cucumber sticks'},
 };
 const DISHES = {
   burger:{
-    title:'Burgers', crates:['bun','patty','lettuce','tomato','cheese'], plate:'Plate', cooker:'Grill',
+    title:'Burgers', crates:['bun','patty','lettuce','tomato','cheese'], plate:'Plate', plateIcon:'plate', cooker:'Grill', cookSec:'Grill', cookIcon:'flame',
+    boardHint:'Bring lettuce or a tomato to chop',
+    cook:{kind:'patty', bring:'Bring a raw patty to grill', only:'Only patties go on the grill', go:'Grill the patty', busy:'This burner is in use', has:'Plate already has a patty', add:'Add cooked patty to the plate', ready:'Ready!', warn:'A patty is about to burn!', ruined:'Burnt!'},
     order:['bun','patty','cheese','tomato','lettuce'],
     recipes:[
       {name:'Classic Burger', items:['bun','patty'], price:8, unlock:0, w:3},
@@ -366,7 +374,8 @@ const DISHES = {
     ]
   },
   pizza:{
-    title:'Pizza', crates:['dough','sauce','mozz','pepperoni','mushroom'], plate:'Tray', cooker:'Oven',
+    title:'Pizza', crates:['dough','sauce','mozz','pepperoni','mushroom'], plate:'Tray', plateIcon:'tray', cooker:'Oven', cookSec:'Oven', cookIcon:'flame',
+    boardHint:'Bring dough to roll or mushrooms to slice',
     order:['dough','sauce','mozz','pepperoni','mushroom'],
     recipes:[
       {name:'Marinara', items:['dough','sauce'], price:8, unlock:0, w:2},
@@ -374,6 +383,19 @@ const DISHES = {
       {name:'Pepperoni', items:['dough','sauce','mozz','pepperoni'], price:13, unlock:20, w:3},
       {name:'Funghi', items:['dough','sauce','mozz','mushroom'], price:13, unlock:45, w:2},
       {name:'The Works', items:['dough','sauce','mozz','pepperoni','mushroom'], price:17, unlock:75, w:2},
+    ]
+  },
+  sushi:{
+    title:'Sushi', crates:['rice','nori','salmon','tuna','cucumber'], plate:'Platter', plateIcon:'platter', cooker:'Rice cooker', cookSec:'Rice', cookIcon:'ricecooker',
+    boardHint:'Bring fish or a cucumber to slice',
+    cook:{kind:'rice', bring:'Bring raw rice to cook', only:'Only rice goes in the rice cooker', go:'Cook the rice', busy:'This rice cooker is in use', has:'Platter already has rice', add:'Add sushi rice to the platter', ready:'Rice is ready!', warn:'Some rice is about to go mushy!', ruined:'Mushy!'},
+    order:['rice','nori','salmon','tuna','cucumber'],
+    recipes:[
+      {name:'Salmon Nigiri', items:['rice','salmon'], price:9, unlock:0, w:3},
+      {name:'Tuna Nigiri', items:['rice','tuna'], price:10, unlock:0, w:3},
+      {name:'Sashimi Duo', items:['salmon','tuna'], price:11, unlock:20, w:2},
+      {name:'Cucumber Roll', items:['rice','nori','cucumber'], price:12, unlock:45, w:2},
+      {name:'Dragon Roll', items:['rice','nori','salmon','tuna','cucumber'], price:17, unlock:75, w:2},
     ]
   }
 };
@@ -389,6 +411,15 @@ const ICON = {
   mozz:'<svg viewBox="0 0 24 24"><circle cx="9" cy="13" r="5.5" fill="#fbf6e4" stroke="#cfc4a6"/><circle cx="15.5" cy="10.5" r="4.5" fill="#fffdf3" stroke="#cfc4a6"/></svg>',
   pepperoni:'<svg viewBox="0 0 24 24"><circle cx="9" cy="12" r="6" fill="#b8332a"/><circle cx="15" cy="13" r="6" fill="#c63d31"/><g fill="#e98a7a"><circle cx="13.5" cy="11.5" r="1"/><circle cx="16.5" cy="15" r="1"/><circle cx="16.8" cy="10.5" r=".8"/></g></svg>',
   mushroom:'<svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 6.5 0 0 1 17 0z" fill="#a8805c"/><rect x="9.5" y="12" width="5" height="7" rx="2" fill="#efe2c8"/></svg>',
+  rice:'<svg viewBox="0 0 24 24"><path d="M3 12h18a9 6.5 0 0 1-18 0z" fill="#26201d"/><path d="M4.2 12.4h15.6a7.8 5 0 0 1-15.6 0z" fill="#9c2a2a"/><path d="M4 12c.6-3.4 3.8-5.2 8-5.2s7.4 1.8 8 5.2z" fill="#fbf8ee"/><g fill="#e8e1cf"><ellipse cx="9" cy="9.6" rx=".9" ry=".4"/><ellipse cx="13" cy="8.6" rx=".9" ry=".4"/><ellipse cx="15.4" cy="10.4" rx=".9" ry=".4"/><ellipse cx="11" cy="11" rx=".9" ry=".4"/></g></svg>',
+  nori:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="1.5" fill="#1d3424"/><path d="M6 8.5h12M6 12h12M6 15.5h12" stroke="#2f5238" stroke-width="1" stroke-linecap="round"/></svg>',
+  salmon:'<svg viewBox="0 0 24 24"><path d="M3 15c1-5 5-8 10-8 4 0 7 1.5 8 4-1 4-5 7-10 7-4 0-7-1-8-3z" fill="#f2875a"/><path d="M7 9.5c2 2.5 2 5.5 0 8M11 8.5c2 3 2 6.5 0 9.5M15 8.5c1.6 3 1.6 6.5 0 9" stroke="#fbd3bd" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>',
+  tuna:'<svg viewBox="0 0 24 24"><rect x="3" y="7.5" width="18" height="9" rx="2.2" fill="#c1323f"/><path d="M6 9.5l3 5M10.5 9.5l3 5M15 9.5l3 5" stroke="#d8505c" stroke-width="1.1" stroke-linecap="round"/></svg>',
+  cucumber:'<svg viewBox="0 0 24 24"><circle cx="8" cy="12.5" r="5.3" fill="#3f7d3a"/><circle cx="8" cy="12.5" r="4.1" fill="#cfe8a8"/><circle cx="16.2" cy="11.5" r="5.3" fill="#3f7d3a"/><circle cx="16.2" cy="11.5" r="4.1" fill="#cfe8a8"/><g fill="#9cc77a"><circle cx="16.2" cy="10.3" r=".7"/><circle cx="15.1" cy="12.3" r=".7"/><circle cx="17.3" cy="12.3" r=".7"/></g></svg>',
+  platter:'<svg viewBox="0 0 24 24"><rect x="2.5" y="10" width="19" height="4.2" rx="1" fill="#d8a66b" stroke="#8a5a2e"/><rect x="5" y="14.2" width="2.2" height="3.5" fill="#a87444"/><rect x="16.8" y="14.2" width="2.2" height="3.5" fill="#a87444"/></svg>',
+  ricecooker:'<svg viewBox="0 0 24 24"><rect x="4.5" y="9" width="15" height="11" rx="4" fill="#fbf7ee" stroke="#b9b09f"/><path d="M4.5 10.5a7.5 4.5 0 0 1 15 0z" fill="#e4553b"/><circle cx="12" cy="15.5" r="1.3" fill="#ff8a3d"/><path d="M9 6.5c0-1.5 1.2-1.5 1.2-3M13 6.5c0-1.5 1.2-1.5 1.2-3" stroke="#b9c3c6" stroke-width="1.2" fill="none" stroke-linecap="round"/></svg>',
+  nigiri:'<svg viewBox="0 0 24 24"><rect x="4.5" y="12" width="15" height="6" rx="3" fill="#fbf8ee" stroke="#d7cfbb"/><path d="M3.5 12.5c1-4 4-5 8.5-5s7.5 1 8.5 5c-3 1-14 1-17 0z" fill="#f2875a"/><path d="M8 8.5c1 1.4 1 2.8 0 4M12 7.8c1 1.6 1 3.2 0 4.8M16 8.5c1 1.4 1 2.8 0 4" stroke="#fbd3bd" stroke-width="1" fill="none"/></svg>',
+  maki:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="#1d3424"/><circle cx="12" cy="12" r="6.6" fill="#fbf8ee"/><circle cx="12" cy="12" r="2.6" fill="#f2875a"/><circle cx="10.3" cy="13.4" r="1.2" fill="#3f7d3a"/></svg>',
   plate:'<svg viewBox="0 0 24 24"><ellipse cx="12" cy="14" rx="10" ry="4.6" fill="#fbf7ee" stroke="#b9b09f"/><ellipse cx="12" cy="13.6" rx="6" ry="2.4" fill="#ece4d4"/></svg>',
   tray:'<svg viewBox="0 0 24 24"><ellipse cx="12" cy="14" rx="10" ry="4.6" fill="#b9c3c6" stroke="#5f6a6f"/><ellipse cx="12" cy="13.6" rx="8" ry="3.4" fill="#cfd7da"/></svg>',
   pizza:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" fill="#e2b877"/><circle cx="12" cy="12" r="7.6" fill="#f3cf73"/><g fill="#b8332a"><circle cx="9" cy="9.5" r="1.7"/><circle cx="14.8" cy="10.5" r="1.7"/><circle cx="11" cy="15" r="1.7"/></g></svg>',
@@ -407,8 +438,8 @@ function stationMeta(dish){
   const D = DISHES[dish], list = [];
   D.crates.forEach(k => list.push({name: INGR[k].crate.charAt(0) + INGR[k].crate.slice(1).toLowerCase(), icon: ICON[k], sec:'Pantry'}));
   [1,2].forEach(i => list.push({name:'Board ' + i, icon: ICON.knife, sec:'Prep'}));
-  [1,2].forEach(i => list.push({name: D.cooker + ' ' + i, icon: ICON.flame, sec: dish === 'pizza' ? 'Oven' : 'Grill'}));
-  [1,2,3].forEach(i => list.push({name: D.plate + ' ' + i, icon: dish === 'pizza' ? ICON.tray : ICON.plate, sec: D.plate + 's'}));
+  [1,2].forEach(i => list.push({name: D.cooker + ' ' + i, icon: ICON[D.cookIcon], sec: D.cookSec}));
+  [1,2,3].forEach(i => list.push({name: D.plate + ' ' + i, icon: ICON[D.plateIcon], sec: D.plate + 's'}));
   list.push({name:'Pass', icon: ICON.bell, sec:'Service'});
   list.push({name:'Bin', icon: ICON.bin, sec:'Service'});
   return list;
@@ -541,6 +572,16 @@ const M = {
   mushCap: mat('#a8805c', {roughness:.7}),
   mushIn: mat('#e6d6bb', {roughness:.75}),
   jar: mat('#e9f3f1', {roughness:.1, transparent:true, opacity:.55}),
+  rice: mat('#fbf8ee', {roughness:.75}),
+  nori: mat('#1d3424', {roughness:.7}),
+  salmon: mat('#f2875a', {roughness:.45}),
+  salmonFat: mat('#fbd3bd', {roughness:.45}),
+  tuna: mat('#c1323f', {roughness:.42}),
+  cucumber: mat('#3f7d3a', {roughness:.5}),
+  cucumberIn: mat('#cfe8a8', {roughness:.6}),
+  lacquer: mat('#26201d', {roughness:.35}),
+  lacquerRed: mat('#9c2a2a', {roughness:.35}),
+  sack: mat('#d9c39a', {roughness:.95, flatShading:true}),
 };
 
 // ------------------------------------------------------------------ shared textures
@@ -606,7 +647,7 @@ function menuTex(dish){
     const r0 = mulberry(dish.length * 99);
     for (let i = 0; i < 30; i++){ c.fillStyle = `rgba(255,255,255,${r0()*.035})`; c.beginPath(); c.ellipse(r0()*w, r0()*h, 40+r0()*80, 14+r0()*30, r0(), 0, TAU); c.fill(); }
     c.fillStyle = '#f7f1e3'; c.textAlign = 'center'; c.font = '58px "Lilita One", sans-serif';
-    c.fillText(dish === 'pizza' ? 'PIZZA MENU' : 'LUNCH MENU', w/2, 72);
+    c.fillText(dish === 'pizza' ? 'PIZZA MENU' : dish === 'sushi' ? 'SUSHI MENU' : 'LUNCH MENU', w/2, 72);
     c.strokeStyle = 'rgba(247,241,227,.7)'; c.lineWidth = 3; c.setLineDash([10,8]); c.beginPath(); c.moveTo(60, 94); c.lineTo(w-60, 94); c.stroke(); c.setLineDash([]);
     c.textAlign = 'left'; c.font = '800 30px Nunito, sans-serif';
     DISHES[dish].recipes.forEach((r, i) => {
@@ -686,6 +727,7 @@ function pattyObj(cook = 0){
   [-.16, 0, .16].forEach(x => mesh(box(.05,.006,.56), mat('#3a2014'), {pos:[x,0,0], rot:[0,.5,0], parent:marks, cast:false}));
   marks.visible = cook >= COOK_DONE * .7;
   g.userData.pattyMat = m; g.userData.marks = marks;
+  g.userData.tint = c => { pattyColor(c, m.color); marks.visible = c >= COOK_DONE * .7; };
   return g;
 }
 function lettuceHead(){
@@ -729,6 +771,45 @@ function mushroomWhole(){ const g = new THREE.Group(); mesh(cyl(.05,.06,.14,10),
 function mushroomItem(){ const g = new THREE.Group(); [[-.15,0,0],[.15,0,.05],[0,0,-.15]].forEach(([x,y,z]) => { const m = mushroomWhole(); m.position.set(x,y,z); g.add(m); }); return g; }
 const mushSliceGeo = () => geo('mslice', () => new THREE.CylinderGeometry(.09, .09, .025, 12, 1, false, 0, Math.PI));
 function mushroomSliced(){ const g = new THREE.Group(); for (let i = 0; i < 6; i++) mesh(mushSliceGeo(), M.mushIn, {pos:[Math.cos(i*1.1)*.15, .02 + (i%2)*.02, Math.sin(i*1.1)*.15], rot:[0, i, 0], parent:g}); return g; }
+// sushi bits
+const RICE = {raw: lin('#e9e0c8'), cooked: lin('#fffdf6'), mush: lin('#b9a98a')};
+function riceColor(cook, out){
+  if (cook < COOK_DONE) return out.copy(RICE.raw).lerp(RICE.cooked, cook / COOK_DONE);
+  if (cook < BURN_WARN) return out.copy(RICE.cooked);
+  return out.copy(RICE.cooked).lerp(RICE.mush, clamp((cook - BURN_WARN) / (COOK_BURN - BURN_WARN), 0, 1));
+}
+// a lacquer bowl of rice; the rice cooker tints it as it cooks
+function riceObj(cook = 0){
+  const g = new THREE.Group();
+  mesh(geo('rbowl', () => new THREE.LatheGeometry([[0,0],[.16,0],[.2,.03],[.3,.16],[.31,.2],[.27,.2],[.17,.06],[0,.06]].map(p => new THREE.Vector2(p[0], p[1])), 24)), M.lacquer, {parent:g});
+  const m = mat('#e9e0c8', {roughness:.8, unique:true});
+  riceColor(cook, m.color);
+  mesh(geo('rmound', () => jitter(new THREE.SphereGeometry(.27, 16, 8, 0, TAU, 0, Math.PI/2), .06)), m, {pos:[0,.15,0], scale:[1,.55,1], parent:g});
+  g.userData.tint = c => riceColor(c, m.color);
+  return g;
+}
+function riceSack(){
+  const g = new THREE.Group();
+  mesh(geo('sack', () => jitter(new THREE.CylinderGeometry(.2,.26,.42,10,2), .08)), M.sack, {pos:[0,.21,0], parent:g});
+  mesh(geo('sacktop', () => jitter(new THREE.ConeGeometry(.16,.16,10), .1)), M.sack, {pos:[0,.48,0], parent:g});
+  mesh(torus(.09,.02,6,16), M.woodDark, {pos:[0,.44,0], rot:[Math.PI/2,0,0], parent:g, cast:false});
+  return g;
+}
+function noriSheet(){ const g = new THREE.Group(); mesh(box(.62,.015,.5), M.nori, {pos:[0,.01,0], parent:g}); return g; }
+function noriStack(){ const g = new THREE.Group(); for (let i = 0; i < 7; i++) mesh(box(.62,.012,.5), M.nori, {pos:[(i%2)*.02,.008 + i*.014,(i%3)*.01], rot:[0,(i%2)*.06,0], parent:g}); return g; }
+function fishFillet(m){
+  const g = new THREE.Group();
+  mesh(rbox(.7,.13,.3,.05), m, {pos:[0,.07,0], parent:g});
+  if (m === M.salmon) [-.2,0,.2].forEach(x => mesh(box(.02,.005,.29), M.salmonFat, {pos:[x,.137,0], rot:[0,.4,0], parent:g, cast:false}));
+  return g;
+}
+function fishSlices(m){
+  const g = new THREE.Group();
+  for (let i = 0; i < 4; i++) mesh(rbox(.17,.04,.3,.015), m, {pos:[-.24 + i*.16, .03 + i*.008, (i%2)*.03], rot:[0,0,.25], parent:g});
+  return g;
+}
+function cucumberWhole(){ const g = new THREE.Group(); mesh(cyl(.08,.08,.62,14), M.cucumber, {pos:[0,.08,0], rot:[0,0,Math.PI/2], parent:g}); [.31,-.31].forEach(x => mesh(sph(.08,12,8), M.cucumber, {pos:[x,.08,0], scale:[.4,1,1], parent:g})); return g; }
+function cucumberSticks(){ const g = new THREE.Group(); for (let i = 0; i < 5; i++) mesh(box(.42,.05,.05), i % 2 ? M.cucumberIn : M.cucumber, {pos:[0, .03 + (i%2)*.05, -.12 + i*.06], rot:[0,.1*(i-2),0], parent:g}); return g; }
 function itemObj(it){
   switch (it.kind){
     case 'bun': return bunWhole();
@@ -741,14 +822,23 @@ function itemObj(it){
     case 'mozz': return mozzPile();
     case 'pepperoni': return pepSlices();
     case 'mushroom': return it.chopped ? mushroomSliced() : mushroomItem();
+    case 'rice': return riceObj(it.cook);
+    case 'nori': return noriSheet();
+    case 'salmon': return it.chopped ? fishSlices(M.salmon) : fishFillet(M.salmon);
+    case 'tuna': return it.chopped ? fishSlices(M.tuna) : fishFillet(M.tuna);
+    case 'cucumber': return it.chopped ? cucumberSticks() : cucumberWhole();
   }
 }
 const plateGeo = geo('plate', () => new THREE.LatheGeometry([[0,0],[.42,0],[.47,.02],[.64,.09],[.67,.105],[.64,.11],[.48,.045],[0,.045]].map(p => new THREE.Vector2(p[0], p[1])), 36));
 const trayGeo = geo('tray', () => new THREE.LatheGeometry([[0,0],[.6,0],[.64,.01],[.67,.055],[.65,.06],[.61,.022],[0,.022]].map(p => new THREE.Vector2(p[0], p[1])), 36));
 function plateObj(dish){
   const g = new THREE.Group();
-  mesh(dish === 'pizza' ? trayGeo : plateGeo, dish === 'pizza' ? M.steel : M.plate, {parent:g});
-  const contents = new THREE.Group(); contents.position.y = dish === 'pizza' ? .022 : .045; g.add(contents);
+  if (dish === 'sushi'){
+    // a wooden geta
+    mesh(rbox(1.1,.07,.62,.02), M.wood, {pos:[0,.11,0], parent:g});
+    [-.38,.38].forEach(x => mesh(box(.1,.08,.56), M.woodDark, {pos:[x,.04,0], parent:g}));
+  } else mesh(dish === 'pizza' ? trayGeo : plateGeo, dish === 'pizza' ? M.steel : M.plate, {parent:g});
+  const contents = new THREE.Group(); contents.position.y = dish === 'pizza' ? .022 : dish === 'sushi' ? .145 : .045; g.add(contents);
   g.userData.contents = contents;
   return g;
 }
@@ -775,6 +865,7 @@ function fillPlate(dish, pl, fresh){
     });
     return;
   }
+  if (dish === 'sushi') return fillSushi(c, items, fresh);
   const u = pl.obj.userData;
   if (!u.doughMat){ u.doughMat = mat('#f2dcaa', {roughness:.85, unique:true}); u.cheeseMat = mat('#fbf6e4', {roughness:.5, unique:true}); }
   const add = (o, kind) => { c.add(o); if (fresh === kind) popIn(o); };
@@ -789,6 +880,42 @@ function fillPlate(dish, pl, fresh){
   if (items.has('pepperoni')){ const g = new THREE.Group(); pepSpots.forEach(([x,z]) => mesh(cyl(.085,.085,.02,16), M.pep, {pos:[x,.08,z], parent:g, cast:false})); add(g, 'pepperoni'); }
   if (items.has('mushroom')){ const g = new THREE.Group(); mushSpots.forEach(([x,z,r]) => mesh(mushSliceGeo(), M.mushIn, {pos:[x,.084,z], rot:[0,r,0], parent:g, cast:false})); add(g, 'mushroom'); }
   tintPizza(pl);
+}
+// Sushi on the platter: rice + nori makes a roll, rice alone makes nigiri, no rice is sashimi
+function fillSushi(c, items, fresh){
+  const add = (o, kind) => { c.add(o); if (kind && fresh === kind) popIn(o); };
+  const fish = ['salmon','tuna'].filter(k => items.has(k));
+  const fishMat = k => k === 'salmon' ? M.salmon : M.tuna;
+  if (items.has('rice') && items.has('nori')){
+    // maki: six slices of roll, fillings in the middle
+    const fill = [...fish.map(fishMat), ...(items.has('cucumber') ? [M.cucumber] : [])];
+    const g = new THREE.Group();
+    for (let i = 0; i < 6; i++){
+      const pc = new THREE.Group(); pc.position.set(-.42 + (i%3)*.42, 0, i < 3 ? -.13 : .13); g.add(pc);
+      mesh(cyl(.17,.17,.14,18), M.nori, {pos:[0,.07,0], parent:pc});
+      mesh(cyl(.145,.145,.142,18), M.rice, {pos:[0,.072,0], parent:pc, cast:false});
+      fill.forEach((m, j) => { const a = j / Math.max(1, fill.length) * TAU; mesh(cyl(.05,.05,.144,10), m, {pos:[fill.length > 1 ? Math.cos(a)*.05 : 0, .073, fill.length > 1 ? Math.sin(a)*.05 : 0], parent:pc, cast:false}); });
+    }
+    c.add(g); if (fresh) popIn(g);
+    return;
+  }
+  if (items.has('rice')){
+    // nigiri: two rice pillows with the topping draped over
+    const tops = fish.length ? fish : items.has('cucumber') ? ['cucumber'] : [];
+    [-.24, .24].forEach((x, i) => {
+      const pc = new THREE.Group(); pc.position.x = x; c.add(pc);
+      mesh(geo('nrice', () => jitter(new THREE.SphereGeometry(.16, 14, 10), .05)), M.rice, {pos:[0,.08,0], scale:[1.35,.6,.8], parent:pc});
+      const t = tops[i % Math.max(1, tops.length)];
+      if (t === 'cucumber') mesh(box(.36,.05,.12), M.cucumber, {pos:[0,.15,0], parent:pc});
+      else if (t) { mesh(rbox(.44,.05,.24,.02), fishMat(t), {pos:[0,.15,0], rot:[0,0,.06], parent:pc}); if (t === 'salmon') [-.1,.05].forEach(z => mesh(box(.02,.004,.22), M.salmonFat, {pos:[z*1.4,.178,0], rot:[0,.4,0], parent:pc, cast:false})); }
+      if (fresh === 'rice' || (t && fresh === t)) popIn(pc, i * .05);
+    });
+    return;
+  }
+  // sashimi: fanned slices, cucumber on the side
+  fish.forEach((k, j) => { const g = fishSlices(fishMat(k)); g.position.set(-.18 + j*.36, 0, 0); g.scale.setScalar(.9); g.rotation.y = .5; add(g, k); });
+  if (items.has('cucumber')){ const g = cucumberSticks(); g.scale.setScalar(.7); g.position.set(.32, 0, .12); add(g, 'cucumber'); }
+  if (items.has('nori')){ const g = noriSheet(); g.scale.setScalar(.7); g.position.set(-.25, 0, -.12); add(g, 'nori'); }
 }
 function tintPizza(pl){
   const u = pl.obj.userData; if (!u.doughMat) return;
@@ -976,15 +1103,15 @@ function isFresh(it){
 }
 function labelOf(it){
   const d = INGR[it.kind];
-  if (d.cook) return it.cook >= COOK_BURN ? 'burnt patty' : it.cook >= COOK_DONE ? 'cooked patty' : 'raw patty';
+  if (d.cook) return it.cook >= COOK_BURN ? d.cooked[2] : it.cook >= COOK_DONE ? d.cooked[1] : d.cooked[0];
   if (d.prep && it.chopped) return d.prepped;
   return d.label;
 }
 function whyNot(it){
   const d = INGR[it.kind];
-  if (d.cook) return it.cook >= COOK_BURN ? 'That patty is burnt. Bin it.' : 'Cook the patty on the grill first';
+  if (d.cook) return it.cook >= COOK_BURN ? d.ruined : d.cookFirst;
   if (d.prep === 'roll') return 'Roll the dough on a board first';
-  return `Chop the ${d.label} on a board first`;
+  return `${d.prep === 'slice' ? 'Slice' : 'Chop'} the ${d.label} on a board first`;
 }
 const cap = s => s[0].toUpperCase() + s.slice(1);
 const sameSet = (a, b) => { if (a.size !== b.size) return false; for (const x of a) if (!b.has(x)) return false; return true; };
@@ -1042,6 +1169,10 @@ class Crate extends Station {
     if (kind === 'mozz'){ [[-.24,-.16],[.06,-.2],[.3,-.04],[-.16,.18],[.16,.2],[-.02,0]].forEach(([x,z], i) => add(mozzBall(), x, i === 5 ? .1 : 0, z, 1)); }
     if (kind === 'pepperoni'){ add(salami(), -.02, 0, -.2, 1, .1); add(salami(), .02, 0, 0, 1, -.08); add(salami(), 0, .17, -.1, 1, .05); add(pepSlices(), .1, .02, .25, 1); }
     if (kind === 'mushroom'){ [[-.28,-.2],[0,-.22],[.28,-.18],[-.2,.12],[.08,.1],[.3,.2],[-.05,.3]].forEach(([x,z], i) => add(mushroomWhole(), x, 0, z, 1.1, i)); }
+    if (kind === 'rice'){ [[-.24,-.14],[.22,-.12],[0,.18]].forEach(([x,z], i) => add(riceSack(), x, 0, z, 1, i)); }
+    if (kind === 'nori'){ add(noriStack(), -.15, 0, -.1, 1, .1); add(noriStack(), .2, 0, .15, .9, -.2); }
+    if (kind === 'salmon' || kind === 'tuna'){ mesh(box(.95,.01,.8), M.paper, {pos:[0,.01,0], parent:f, cast:false}); const m = kind === 'salmon' ? M.salmon : M.tuna; [[-.05,-.2],[.05,.02],[-.02,.24]].forEach(([x,z], i) => add(fishFillet(m), x, .01 + (i%2)*.01, z, 1, (i-1)*.1)); }
+    if (kind === 'cucumber'){ [[0,-.25],[.04,-.08],[-.03,.09],[.02,.26]].forEach(([x,z], i) => add(cucumberWhole(), x, 0, z, 1.1, (i%2)*.08)); add(cucumberWhole(), 0, .14, -.02, 1.1, .05); }
     mesh(new THREE.PlaneGeometry(.66, .19), new THREE.MeshStandardMaterial({map:labelTex(INGR[kind].crate), roughness:.7}), {pos:[0,.23,.515], parent:v, cast:false});
   }
   action(){
@@ -1085,9 +1216,9 @@ class Board extends Station {
   action(){
     const k = this.k;
     if (!k.hand){
-      if (!this.item) return {label: k.dish === 'pizza' ? 'Bring dough to roll or mushrooms to slice' : 'Bring lettuce or a tomato to chop', bad:true};
+      if (!this.item) return {label: k.D.boardHint, bad:true};
       const p = this.prep();
-      if (p) return {label:`${p === 'roll' ? 'Roll the dough' : 'Chop the ' + INGR[this.item.kind].label}  ${this.chops}/${CHOPS}`, run:() => this.chop()};
+      if (p) return {label:`${p === 'roll' ? 'Roll the dough' : (p === 'slice' ? 'Slice the ' : 'Chop the ') + INGR[this.item.kind].label}  ${this.chops}/${CHOPS}`, run:() => this.chop()};
       return {label:`Take the ${labelOf(this.item)}`, run:() => { const it = this.item, o = this.obj; this.item = this.obj = null; this.chops = 0; k.grab(o, {type:'item', it}); }};
     }
     if (k.hand.type === 'plate'){
@@ -1111,20 +1242,20 @@ class Board extends Station {
     if (p === 'roll'){ this.pinT = 1; sfx.roll(); emit('steam', this.world(.2), {n:3, color:'#fffaf0'}); }
     else { this.knifeT = 1; sfx.chop(); }
     bump(this.obj, 3);
-    const col = {lettuce:['#6cbb4a','#9fd876','#4f9a39'], tomato:['#e3412d','#f46a50','#ffd9a8'], mushroom:['#a8805c','#e6d6bb'], dough:['#fffaf0','#f2dcaa']}[this.item.kind];
+    const col = {lettuce:['#6cbb4a','#9fd876','#4f9a39'], tomato:['#e3412d','#f46a50','#ffd9a8'], mushroom:['#a8805c','#e6d6bb'], dough:['#fffaf0','#f2dcaa'], salmon:['#f2875a','#fbd3bd'], tuna:['#c1323f','#d8505c'], cucumber:['#3f7d3a','#cfe8a8']}[this.item.kind];
     emit('bit', this.world(.25), {n:p === 'roll' ? 3 : 6, colors:col, floor:1.08});
     if (this.chops >= CHOPS){
       this.item.chopped = true;
       this.group.remove(this.obj);
       this.obj = itemObj(this.item); this.obj.position.set(-.1, .07, 0); this.group.add(this.obj); popIn(this.obj);
-      sfx.done(); floatText(this.k, p === 'roll' ? 'Rolled!' : 'Chopped!', this.world(1.0), 'small');
+      sfx.done(); floatText(this.k, p === 'roll' ? 'Rolled!' : p === 'slice' ? 'Sliced!' : 'Chopped!', this.world(1.0), 'small');
     }
   }
   update(dt){
     this.knifeT = Math.max(0, this.knifeT - dt * 6);
     this.knife.rotation.z = lerp(-.5, .1, Math.sin(this.knifeT * Math.PI));
     const p = this.prep();
-    this.knife.position.z = lerp(this.knife.position.z, p === 'chop' ? 0 : .3, 1 - Math.exp(-dt * 10));
+    this.knife.position.z = lerp(this.knife.position.z, p === 'chop' || p === 'slice' ? 0 : .3, 1 - Math.exp(-dt * 10));
     if (this.pin){
       this.pinT = Math.max(0, this.pinT - dt * 3);
       const tz = p === 'roll' ? Math.sin((1 - this.pinT) * TAU) * .22 * (this.pinT > 0 ? 1 : 0) : -.36;
@@ -1137,56 +1268,78 @@ class Board extends Station {
   }
 }
 
+// Cooks the dish's cooked ingredient: a grill for patties, a rice cooker for sushi rice
 class Grill extends Station {
   constructor(k, x, z){
     super(k, x, 1.0, z, 1.4, .8, 1.25, {glowY:.15, round:true, gw:1.25, gd:1.25});
     const v = this.vis;
+    this.C = k.D.cook;
     this.coilMat = mat('#2a2522', {emissive:'#ff5a1a', emissiveIntensity:0, roughness:.5, unique:true});
-    mesh(torus(.26, .035), this.coilMat, {pos:[0,.16,0], rot:[Math.PI/2,0,0], parent:v, cast:false});
-    mesh(torus(.14, .03, 8, 24), this.coilMat, {pos:[0,.16,0], rot:[Math.PI/2,0,0], parent:v, cast:false});
-    mesh(torus(.45, .03, 8, 36), M.iron, {pos:[0,.19,0], rot:[Math.PI/2,0,0], parent:v});
-    for (let i = 0; i < 4; i++) mesh(box(.9,.03,.04), M.iron, {pos:[0,.19,0], rot:[0, i*Math.PI/4, 0], parent:v});
+    if (this.C.kind === 'rice'){
+      // rice cooker: white body, red lid that closes while it cooks, a lamp that goes orange then green
+      mesh(cyl(.42,.4,.06,24), M.ink, {pos:[0,.03,0], parent:v});
+      mesh(geo('rcbody', () => new THREE.LatheGeometry([[0,0],[.4,0],[.46,.08],[.47,.34],[.42,.42],[.36,.42],[.36,.06],[0,.06]].map(p => new THREE.Vector2(p[0], p[1])), 28)), M.white, {pos:[0,.06,0], parent:v});
+      this.lid = new THREE.Group(); this.lid.position.set(0, .49, -.42); v.add(this.lid);
+      mesh(geo('rclid', () => new THREE.SphereGeometry(.45, 24, 8, 0, TAU, 0, Math.PI/2)), M.red, {pos:[0,0,.42], scale:[1,.32,1], parent:this.lid});
+      mesh(box(.12,.05,.06), M.ink, {pos:[0,.14,.42], parent:this.lid});
+      this.lamp = mat('#333', {emissive:'#ff8a3d', emissiveIntensity:0, unique:true});
+      mesh(sph(.04,10,8), this.lamp, {pos:[0,.32,.47], parent:v, cast:false});
+      this.lidT = 0;
+    } else {
+      mesh(torus(.26, .035), this.coilMat, {pos:[0,.16,0], rot:[Math.PI/2,0,0], parent:v, cast:false});
+      mesh(torus(.14, .03, 8, 24), this.coilMat, {pos:[0,.16,0], rot:[Math.PI/2,0,0], parent:v, cast:false});
+      mesh(torus(.45, .03, 8, 36), M.iron, {pos:[0,.19,0], rot:[Math.PI/2,0,0], parent:v});
+      for (let i = 0; i < 4; i++) mesh(box(.9,.03,.04), M.iron, {pos:[0,.19,0], rot:[0, i*Math.PI/4, 0], parent:v});
+    }
     this.item = null; this.obj = null; this.bar = makeBar(k); this.steamT = 0;
   }
   action(){
-    const k = this.k;
+    const k = this.k, C = this.C, P = k.D.plate.toLowerCase();
     if (!k.hand){
-      if (!this.item) return {label:'Bring a raw patty to grill', bad:true};
+      if (!this.item) return {label: C.bring, bad:true};
       return {label:`Take the ${labelOf(this.item)}`, run:() => { const it = this.item, o = this.obj; this.item = this.obj = null; k.grab(o, {type:'item', it}); }};
     }
     if (k.hand.type === 'plate'){
-      if (!this.item) return {label:'Plates go on the plate spots', bad:true};
+      if (!this.item) return {label:`${k.D.plate}s go on the ${P} spots`, bad:true};
       if (!isReady(this.item)) return {label: whyNot(this.item), bad:true};
-      if (k.hand.items.has('patty')) return {label:'Plate already has a patty', bad:true};
-      return {label:'Add cooked patty to the plate', run:() => { const o = this.obj; this.item = this.obj = null; k.addToPlate(k.hand, 'patty', o); }};
+      if (k.hand.items.has(C.kind)) return {label: C.has, bad:true};
+      return {label: C.add, run:() => { const o = this.obj; this.item = this.obj = null; k.addToPlate(k.hand, C.kind, o); }};
     }
-    if (this.item) return {label:'This burner is in use', bad:true};
-    if (k.hand.it.kind !== 'patty') return {label:'Only patties go on the grill', bad:true};
-    return {label:'Grill the patty', run:() => {
+    if (this.item) return {label: C.busy, bad:true};
+    if (k.hand.it.kind !== C.kind) return {label: C.only, bad:true};
+    return {label: C.go, run:() => {
       const h = k.release(); this.item = h.it; this.obj = h.obj;
-      moveTo(h.obj, this.group, 0, .21, 0); sfx.place(); emit('steam', this.world(.4), {n:4});
+      moveTo(h.obj, this.group, 0, C.kind === 'rice' ? .1 : .21, 0); sfx.place(); emit('steam', this.world(.4), {n:4});
     }};
   }
   cook(dt){
     if (!this.item) return 0;
+    const C = this.C;
     const before = this.item.cook; this.item.cook += dt; const c = this.item.cook;
-    if (before < COOK_DONE && c >= COOK_DONE){ sfx.done(); floatText(this.k, 'Ready!', this.world(1.2), 'small'); bump(this.obj, 2); }
-    if (before < BURN_WARN && c >= BURN_WARN) this.k.say('A patty is about to burn!', this);
-    if (before < COOK_BURN && c >= COOK_BURN){ sfx.burn(); floatText(this.k, 'Burnt!', this.world(1.2), 'small bad'); emit('smoke', this.world(.4), {n:6, color:'#3a3a3a'}); }
+    if (before < COOK_DONE && c >= COOK_DONE){ sfx.done(); floatText(this.k, C.ready, this.world(1.2), 'small'); bump(this.obj, 2); }
+    if (before < BURN_WARN && c >= BURN_WARN) this.k.say(C.warn, this);
+    if (before < COOK_BURN && c >= COOK_BURN){ sfx.burn(); floatText(this.k, C.ruined, this.world(1.2), 'small bad'); emit('smoke', this.world(.4), {n:6, color: C.kind === 'rice' ? '#b9b2a2' : '#3a3a3a'}); }
     return 1;
   }
   update(dt){
-    const has = !!this.item;
+    const has = !!this.item, rice = this.C.kind === 'rice';
     this.coilMat.emissiveIntensity = lerp(this.coilMat.emissiveIntensity, has ? 1.6 + Math.sin(performance.now()/90)*.25 : 0, 1 - Math.exp(-dt*6));
+    if (rice){
+      // lid shut while cooking, open when empty or the rice is done
+      const c = has ? this.item.cook : 0, shut = has && c < COOK_DONE;
+      this.lidT = lerp(this.lidT, shut ? 0 : 1, 1 - Math.exp(-dt * 8));
+      this.lid.rotation.x = -this.lidT * 1.7;
+      this.lamp.emissive.set(has && c >= COOK_DONE && c < BURN_WARN ? '#55e06a' : '#ff8a3d');
+      this.lamp.emissiveIntensity = has ? 1.6 : 0;
+    }
     this.bar.el.hidden = !has;
     if (!has) return;
     const c = this.item.cook;
-    pattyColor(c, this.obj.userData.pattyMat.color);
-    this.obj.userData.marks.visible = c >= COOK_DONE * .7;
+    if (this.obj.userData.tint) this.obj.userData.tint(c);
     this.steamT -= dt;
     if (this.steamT <= 0 && state === 'play'){
       this.steamT = c >= COOK_BURN ? .18 : c >= BURN_WARN ? .22 : .35;
-      emit(c >= BURN_WARN ? 'smoke' : 'steam', this.world(.36), {color: c >= COOK_BURN ? '#2c2c2c' : c >= BURN_WARN ? '#7d7a76' : '#ffffff'});
+      emit(c >= BURN_WARN ? 'smoke' : 'steam', this.world(rice ? .62 : .36), {color: c >= COOK_BURN ? (rice ? '#a8a194' : '#2c2c2c') : c >= BURN_WARN ? '#7d7a76' : '#ffffff'});
     }
     setCookBar(this.bar, c, COOK_DONE, BURN_WARN, COOK_BURN);
     this.barPos = this.world(1.0);
@@ -1251,6 +1404,7 @@ class PlateSpot extends Station {
   constructor(k, x, z){
     super(k, x, 1.0, z, 1.35, .8, 1.3, {round:true, gw:1.5, gd:1.5});
     if (k.dish === 'pizza') mesh(cyl(.74,.74,.025,36), M.wood, {pos:[0,.012,0], parent:this.vis, cast:false});
+    else if (k.dish === 'sushi'){ for (let i = 0; i < 9; i++) mesh(cyl(.035,.035,1.25,8), mat('#c9b27a', {roughness:.8}), {pos:[0,.018,-.56 + i*.14], rot:[0,0,Math.PI/2], parent:this.vis, cast:false}); }
     else {
       mesh(cyl(.72,.72,.012,36), mat('#f0c6b8', {roughness:.9}), {pos:[0,.006,0], parent:this.vis, cast:false});
       mesh(torus(.72, .012, 6, 48), M.red, {pos:[0,.012,0], rot:[Math.PI/2,0,0], parent:this.vis, cast:false});
@@ -1289,13 +1443,14 @@ class Pass extends Station {
   constructor(k){ super(k, 5.0, 1.0, .6, 2.9, 1.0, 1.5); this.spot = new V3(-.2, .02, .05); }
   action(){
     const k = this.k, pz = k.dish === 'pizza';
-    if (!k.hand) return {label:`Bring a finished ${pz ? 'pizza' : 'plate'} here`, bad:true};
-    if (k.hand.type !== 'plate') return {label: pz ? 'Build it on a tray first' : 'Put it on a plate first', bad:true};
+    const P = k.D.plate.toLowerCase();
+    if (!k.hand) return {label:`Bring a finished ${pz ? 'pizza' : P} here`, bad:true};
+    if (k.hand.type !== 'plate') return {label: pz ? 'Build it on a tray first' : `Put it on a ${P} first`, bad:true};
     if (!k.hand.items.size) return {label:`That ${k.D.plate.toLowerCase()} is empty`, bad:true};
     if (pz && k.hand.cook < PZ_DONE) return {label:'Bake the pizza first', bad:true};
     if (pz && k.hand.cook >= PZ_BURN) return {label:'That pizza is burnt. Scrape it in the bin.', bad:true};
     const o = k.findOrder(k.hand.items);
-    if (!o) return {label:`No ticket wants this ${pz ? 'pizza' : 'plate'}`, bad:true};
+    if (!o) return {label:`No ticket wants this ${pz ? 'pizza' : P}`, bad:true};
     return {label:`Serve ${o.r.name}`, run:() => k.serve(o)};
   }
 }
@@ -1503,7 +1658,7 @@ function holdingSummary(k){
     if (k.dish === 'pizza' && h.items.size){
       label += h.cook >= PZ_BURN ? ' (burnt)' : h.cook >= PZ_DONE ? ', baked' : ', not baked yet';
     } else if (m) label += ', ready to serve';
-    return {icons: (k.dish === 'pizza' ? ICON.tray : ICON.plate) + ks.map(x => ICON[x]).join(''), label, kinds:['plate', ...ks]};
+    return {icons: ICON[k.D.plateIcon] + ks.map(x => ICON[x]).join(''), label, kinds:['plate', ...ks]};
   }
   return {icons: ICON[h.it.kind], label: cap(labelOf(h.it)), kinds:[h.it.kind]};
 }
@@ -1604,6 +1759,13 @@ function buildRoom(k){
     k.fire = fire;
     mesh(cyl(.22,.26,2.4,12), M.brickDark, {pos:[.6,2.0,-.1], parent:dome});
     mesh(box(3.0,.1,.18), M.brickDark, {pos:[0,.17,.62], parent:line});
+  } else if (k.dish === 'sushi'){
+    mesh(rbox(3.0, .14, 1.36, .04), M.steelDark, {pos:[0,.07,0], parent:line});
+    mesh(rbox(2.86, .02, 1.22, .01), mat('#c9b27a', {roughness:.8}), {pos:[0,.145,0], parent:line, cast:false});
+    const noren = new THREE.Group(); noren.position.set(3.2, 2.95, -3.75); R.add(noren);
+    mesh(cyl(.03,.03,3.0,8), M.woodDark, {pos:[0,.55,0], rot:[0,0,Math.PI/2], parent:noren});
+    for (let i = 0; i < 4; i++) mesh(box(.68,1.0,.02), mat(i % 2 ? '#2a4d7a' : '#24456e', {roughness:.9}), {pos:[-1.08 + i*.72,0,0], parent:noren, cast:false});
+    mesh(cyl(.17,.17,.02,24), mat('#fbf7ee'), {pos:[0,.05,.02], rot:[Math.PI/2,0,0], parent:noren, cast:false});
   } else {
     mesh(rbox(3.0, .14, 1.36, .04), M.steelDark, {pos:[0,.07,0], parent:line});
     mesh(rbox(2.86, .02, 1.22, .01), M.iron, {pos:[0,.145,0], parent:line, cast:false});
@@ -1662,7 +1824,7 @@ function D_STATIONS(k){
 let state = 'menu';
 let G = {mode:'menu', dish:'burger', t:0, seed:1, kitchens:[], n:0};
 let menuDish = 'burger';
-try { const d = localStorage.getItem('short-order-dish'); if (d === 'pizza' || d === 'burger') menuDish = d; } catch(e){}
+try { const d = localStorage.getItem('short-order-dish'); if (DISHES[d]) menuDish = d; } catch(e){}
 const bestKey = d => 'short-order-best-' + d;
 function getBest(d){ try { return +localStorage.getItem(bestKey(d)) || 0; } catch(e){ return 0; } }
 
@@ -2240,7 +2402,7 @@ function padTick(){
   pad.lastRender = key;
   $('#padOrders').innerHTML = (st.o || []).map(([n, f]) => `<div class="porder ${f < 25 ? 'urgent' : f < 50 ? 'warn' : ''}">${esc(n)}<i style="width:${clamp(+f||0,0,100)}%"></i></div>`).join('') || '<div class="porder">No tickets yet</div>';
   const hk = Array.isArray(st.hk) ? st.hk : [];
-  $('#padHold').innerHTML = `<span class="hicons">${hk.length ? hk.map(x => ICON[x === 'plate' ? (dish === 'pizza' ? 'tray' : 'plate') : x] || '').join('') : ICON.hand}</span><span>${esc(st.h || 'Hands free')}</span>`;
+  $('#padHold').innerHTML = `<span class="hicons">${hk.length ? hk.map(x => ICON[x === 'plate' ? DISHES[dish].plateIcon : x] || '').join('') : ICON.hand}</span><span>${esc(st.h || 'Hands free')}</span>`;
   const btns = padEl.querySelectorAll('.padbtn');
   (st.b || []).forEach(([label, bad], i) => {
     const b = btns[i]; if (!b) return;
@@ -2322,6 +2484,7 @@ function bestLine(){
 }
 $('#oiBurger').innerHTML = ICON.bun + ICON.patty + ICON.cheese;
 $('#oiPizza').innerHTML = ICON.pizza + ICON.pepperoni + ICON.mushroom;
+$('#oiSushi').innerHTML = ICON.nigiri + ICON.maki + ICON.salmon;
 function setDish(d){
   menuDish = d;
   try { localStorage.setItem('short-order-dish', d); } catch(e){}
