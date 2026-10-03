@@ -1,0 +1,17 @@
+{
+  "name": "short-order",
+  "version": "1.0.0",
+  "description": "Short Order - a three.js diner cooking game with couch (phones as station pads) and online versus",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}

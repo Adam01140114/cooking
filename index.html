@@ -110,6 +110,9 @@ body.couch .holding{bottom:calc(env(safe-area-inset-bottom,0px) + 84px)}
 @keyframes rise{0%{transform:translate(-50%,0) scale(.4);opacity:0}15%{transform:translate(-50%,-14px) scale(1.15);opacity:1}100%{transform:translate(-50%,-70px) scale(1);opacity:0}}
 
 /* ---------- Overlays ---------- */
+/* Hidden means hidden: .overlay and others set display, which would otherwise beat the hidden attribute
+   (Claude's artifact page supplies this rule; served on its own, the game needs it) */
+[hidden]{display:none !important}
 .overlay{position:fixed;inset:0;z-index:10;display:grid;place-items:center;padding:16px;background:radial-gradient(ellipse at center,rgba(15,38,35,.35),rgba(10,26,24,.82));overflow:auto}
 .card{width:100%;max-width:540px;background:var(--paper);border-radius:22px;padding:28px 28px 24px;box-shadow:0 24px 60px rgba(0,0,0,.45);position:relative;animation:cardIn .5s cubic-bezier(.2,1.3,.4,1)}
 @keyframes cardIn{from{transform:translateY(30px) scale(.95);opacity:0}}
@@ -218,6 +221,7 @@ details.how summary{cursor:pointer;font-weight:900;color:var(--ink)}
 @media (prefers-reduced-motion:reduce){
   .ticket,.ticket.urgent,.card,.float,#toast.show,.bar.danger,#count span{animation-duration:.01s!important;animation-iteration-count:1!important}
 }
+#padLink.direct{color:#7ad37a}
 </style>
 
 <canvas id="c" tabindex="0" aria-label="Kitchen"></canvas>
@@ -298,6 +302,7 @@ details.how summary{cursor:pointer;font-weight:900;color:var(--ink)}
     <div class="stat who" id="padWho"><span class="lbl">You are</span><span class="val" id="padName">Joining</span></div>
     <div class="stat"><span class="lbl">Till</span><span class="val coins" id="padCoins">$0</span></div>
     <div class="stat"><span class="lbl">Clock</span><span class="val" id="padClock">--</span></div>
+    <div class="stat"><span class="lbl">Link</span><span class="val" id="padLink" title="How this pad reaches the TV">--</span></div>
   </div>
   <div class="padstatus" id="padStatus"><b>Joining the kitchen</b>Connecting to the room…</div>
   <div id="padPlay" hidden>
@@ -310,6 +315,8 @@ details.how summary{cursor:pointer;font-weight:900;color:var(--ink)}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- Multiplayer through server.js (missing when the page is opened another way; then Claude's room is used if there is one) -->
+<script src="/socket.io/socket.io.js"></script>
 <script>
 (function(){
 'use strict';
@@ -1793,12 +1800,180 @@ $('#endCard').addEventListener('click', e => {
   else if (a === 'rematch') hostRematch();
 });
 
+// ------------------------------------------------------------------ rooms on our own server (server.js)
+// The same interface as Claude's room: join(name) -> { presence(patch), peers(), onPeers(cb), leave() }.
+// Presences go through the server. In couch mode each phone (role 'pad') also opens a
+// WebRTC link straight to the TV (role 'host', mode 'couch') over their Wi-Fi and sends its presence that way; the server copy
+// then only goes out twice a second (for anyone joining later). Every presence carries
+// a counter, so whichever way it arrives, an older one never replaces a newer one.
+const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+let netBase = null;
+function netRooms(){
+  if (netBase) return netBase;
+  const socket = window.io({ reconnectionDelayMax: 2000 });
+  const handles = new Map();
+  socket.on('room:peer', (m) => { const h = handles.get(m.name); if (h) h._peer(m.peer, m.presence, m.q, 'server'); });
+  socket.on('room:gone', (m) => { const h = handles.get(m.name); if (h) h._gone(m.peer); });
+  socket.on('room:signal', (m) => { const h = handles.get(m.name); if (h) h._signal(m.from, m.data); });
+  socket.on('connect', () => { for (const h of handles.values()) h._rejoin(); });
+  netBase = { join: (name) => openRoom(name) };
+  // For checking from the console: window.shortOrderNet.rooms.get('so-<code>').stats
+  window.shortOrderNet = { socket, rooms: handles };
+  return netBase;
+
+  function openRoom(name){
+    const peers = new Map();     // socket id -> { peer, presence, q, link, retryAt }
+    let mine = {}, q = 0, left = false, lastServer = 0, serverTimer = null;
+    let self = null; // this page's id in the room: the TV hands out player slots by id
+    const listeners = [];
+    const notify = () => { for (const cb of listeners) { try { cb(); } catch (e) {} } };
+    const entry = (id) => { let p = peers.get(id); if (!p) { p = { peer: id, presence: null, q: 0, link: null, retryAt: 0 }; peers.set(id, p); } return p; };
+    const toServer = () => { lastServer = Date.now(); clearTimeout(serverTimer); serverTimer = null; socket.emit('room:presence', { name, presence: mine, q }); };
+    const h = {
+      stats: { server: 0, direct: 0 }, // updates received each way
+      presence(patch){
+        if (left || !patch) return Promise.resolve();
+        for (const k in patch) { if (patch[k] === null || patch[k] === undefined) delete mine[k]; else mine[k] = patch[k]; }
+        q++;
+        const msg = JSON.stringify({ t: 'p', presence: mine, q });
+        let allDirect = peers.size > 0;
+        for (const p of peers.values()) {
+          if (p.link && p.link.open) { try { p.link.ch.send(msg); } catch (e) { allDirect = false; } }
+          else allDirect = false;
+        }
+        if (!allDirect) toServer();
+        else if (Date.now() - lastServer > 500) toServer();
+        else if (!serverTimer) serverTimer = setTimeout(toServer, 500);
+        connect();
+        return Promise.resolve();
+      },
+      // Everyone in the room, this page included (sameTab), as Claude's room lists them
+      peers(){
+        const list = [...peers.values()].filter(p => p.presence).map(p => ({ peer: p.peer, presence: p.presence, sameTab: false, direct: !!(p.link && p.link.open) }));
+        list.push({ peer: self, presence: mine, sameTab: true, direct: false });
+        return list;
+      },
+      onPeers(cb){ listeners.push(cb); return () => { const i = listeners.indexOf(cb); if (i >= 0) listeners.splice(i, 1); }; },
+      leave(){
+        left = true; clearTimeout(serverTimer);
+        for (const p of peers.values()) closeLink(p);
+        peers.clear(); handles.delete(name);
+        socket.emit('room:leave', { name });
+        return Promise.resolve();
+      },
+      _peer(id, presence, pq, via){
+        const p = entry(id);
+        if (!presence || pq <= p.q) return;
+        p.presence = presence; p.q = pq;
+        if (via) h.stats[via]++;
+        notify(); connect();
+      },
+      _gone(id){ const p = peers.get(id); if (!p) return; closeLink(p); peers.delete(id); notify(); },
+      _rejoin(){
+        if (left) return;
+        socket.emit('room:join', { name }, (res) => {
+          if (!res || res.err) return;
+          self = res.self;
+          for (const x of res.peers) h._peer(x.peer, x.presence, x.q, 'server');
+          if (Object.keys(mine).length) { q++; toServer(); }
+        });
+      },
+      _signal(from, data){
+        if (left || !data) return;
+        const p = entry(from);
+        if (data.d && data.d.type === 'offer') {
+          closeLink(p);
+          const link = openLink(p, false);
+          link.chain = link.pc.setRemoteDescription(data.d)
+            .then(() => link.pc.createAnswer()).then(a => link.pc.setLocalDescription(a))
+            .then(() => signal(p, { d: link.pc.localDescription })).catch(() => dropLink(p));
+        } else if (p.link && data.d) {
+          const link = p.link; link.chain = link.chain.then(() => link.pc.setRemoteDescription(data.d)).catch(() => dropLink(p));
+        } else if (p.link && data.c) {
+          const link = p.link; link.chain = link.chain.then(() => link.pc.addIceCandidate(data.c)).catch(() => {});
+        }
+      }
+    };
+    const signal = (p, data) => socket.emit('room:signal', { name, to: p.peer, data });
+    // Couch: a phone opens the direct link to the TV
+    function connect(){
+      if (left || mine.role !== 'pad' || !window.RTCPeerConnection) return;
+      for (const p of peers.values()) {
+        if (p.presence && p.presence.role === 'host' && p.presence.mode === 'couch' && !p.link && Date.now() >= p.retryAt) {
+          const link = openLink(p, true);
+          link.pc.createOffer().then(o => link.pc.setLocalDescription(o))
+            .then(() => signal(p, { d: link.pc.localDescription })).catch(() => dropLink(p));
+        }
+      }
+    }
+    function openLink(p, offerer){
+      const pc = new RTCPeerConnection({ iceServers: ICE });
+      const link = p.link = { pc, ch: null, open: false, chain: Promise.resolve() };
+      pc.onicecandidate = (e) => { if (e.candidate && p.link === link) signal(p, { c: e.candidate }); };
+      pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' && p.link === link) dropLink(p); };
+      const useChannel = (ch) => {
+        link.ch = ch;
+        ch.onopen = () => {
+          if (p.link !== link) return;
+          link.open = true;
+          if (Object.keys(mine).length) { try { ch.send(JSON.stringify({ t: 'p', presence: mine, q })); } catch (e) {} }
+          notify();
+        };
+        ch.onmessage = (m) => { try { const d = JSON.parse(m.data); if (d.t === 'p') h._peer(p.peer, d.presence, +d.q || 0, 'direct'); } catch (e) {} };
+        ch.onclose = () => { if (p.link === link) dropLink(p); };
+      };
+      if (offerer) useChannel(pc.createDataChannel('presence', { ordered: true }));
+      else pc.ondatachannel = (e) => useChannel(e.channel);
+      return link;
+    }
+    // Lost or never opened: back to the server, try again in a few seconds
+    function dropLink(p){
+      const was = p.link && p.link.open;
+      closeLink(p); p.retryAt = Date.now() + 4000;
+      if (was) { toServer(); notify(); }
+      setTimeout(connect, 4100);
+    }
+    function closeLink(p){
+      if (!p.link) return;
+      try { p.link.pc.close(); } catch (e) {}
+      p.link = null;
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject({ code: 'timeout' }), 10000);
+      socket.emit('room:join', { name }, (res) => {
+        clearTimeout(timer);
+        if (!res || res.err) return reject({ code: (res && res.err) || 'error' });
+        handles.set(name, h);
+        self = res.self;
+        for (const x of res.peers) h._peer(x.peer, x.presence, x.q, 'server');
+        resolve(h);
+      });
+    });
+  }
+}
+
+// The address a phone or the other computer opens: the game itself, but on
+// localhost the computer's Wi-Fi address (a phone can't reach "localhost")
+function gameUrl(){
+  if (window.claude && window.claude.use) return Promise.resolve(ARTIFACT_URL);
+  const here = location.origin + location.pathname;
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(location.hostname)) return Promise.resolve(here);
+  return fetch('/api/lan').then(r => r.json())
+    .then(j => (j && j.origins && j.origins[0]) ? j.origins[0] + location.pathname : here)
+    .catch(() => here);
+}
+const gameBaseP = gameUrl();
+let gameBase = (window.claude && window.claude.use) ? ARTIFACT_URL : location.origin + location.pathname;
+gameBaseP.then(b => { gameBase = b; });
+const onClaude = () => !!(window.claude && window.claude.use);
+
 // ------------------------------------------------------------------ networking (room capability, presence only)
 let net = null;
 const genCode = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (let i = 0; i < 5; i++) s += a[Math.floor(Math.random()*a.length)]; return s; };
 async function openChannel(code){
   let room = null;
-  try { room = window.claude && window.claude.use ? await window.claude.use('room') : null; } catch(e){ room = null; }
+  // Inside Claude: its room. Served by server.js: our own rooms (netRooms above)
+  try { room = window.claude && window.claude.use ? await window.claude.use('room') : (window.io ? netRooms() : null); } catch(e){ room = null; }
   if (!room) return null;
   try {
     const r = await room.join('so-' + code);
@@ -1822,7 +1997,7 @@ function publish(obj, force){
   net.lastPub = s; net.pubT = now;
   net.ch.presence(obj);
 }
-function linkFor(kind, code){ return `${ARTIFACT_URL}#${kind}-${code}`; }
+function linkFor(kind, code){ return `${gameBase}#${kind}-${code}`; }
 function renderQR(text){
   const el = $('#qr'); el.innerHTML = '';
   try { new QRCode(el, {text, width:176, height:176, colorDark:'#1f2b2a', colorLight:'#ffffff', correctLevel: QRCode.CorrectLevel.M}); }
@@ -1840,6 +2015,11 @@ function openLobby(mode){
   $('#lobCode').textContent = code;
   $('#lobLink').value = link;
   renderQR(link);
+  // On localhost the Wi-Fi address may still be on its way: redraw the code once it's here
+  gameBaseP.then(() => { const l = linkFor(mode === 'couch' ? 'c' : 'o', code); if (net && net.code === code && l !== link) { $('#lobLink').value = l; renderQR(l); } });
+  if (!onClaude()) $('#lobNote').textContent = mode === 'couch'
+    ? 'Phones on the same Wi-Fi as this screen connect straight to it, so the pads feel instant.'
+    : 'Your rival can join from anywhere with this link.';
   state = 'lobby';
   showOnly('lobby');
   net = {role:'host', mode, code, ch:null, slots:{p1:null, p2:null}, lastSeq:{}, pubT:0, lastPub:'', n:0, rival:null, rivalFin:false, rivalHere:false};
@@ -1847,8 +2027,9 @@ function openLobby(mode){
   const myNet = net;
   openChannel(code).then(ch => {
     if (net !== myNet) { if (ch) ch.leave(); return; }
-    if (!ch){ renderSlots('Could not open a room from this view. Multiplayer works when the game is opened on claude.ai while signed in.'); return; }
+    if (!ch){ renderSlots(onClaude() ? 'Could not open a room from this view. Multiplayer works when the game is opened on claude.ai while signed in.' : 'Could not reach the game server. Check your connection and try again.'); return; }
     net.ch = ch;
+    renderSlots(); // drop "Opening the room…"
     hostPublish(true);
   });
 }
@@ -1953,13 +2134,13 @@ function guestJoin(code){
   $('#lobCode').textContent = code;
   $('#lobLink').value = linkFor('o', code);
   $('#qr').style.display = 'none';
-  $('#lobNote').textContent = 'You need to be signed in to Claude with access to this game.';
+  $('#lobNote').textContent = onClaude() ? 'You need to be signed in to Claude with access to this game.' : '';
   showOnly('lobby');
   net = {role:'guest', code, ch:null, n:0, pubT:0, lastPub:'', rival:null, rivalFin:false, rivalHere:false, t0: performance.now()};
   $('#slots').innerHTML = '<div class="slot"><span class="st">Opening the room…</span></div>';
   openChannel(code).then(ch => {
     if (!net || net.role !== 'guest') return;
-    if (!ch){ $('#slots').innerHTML = '<div class="slot"><span class="st">Could not connect. Make sure you are signed in to Claude and the game has been shared with you.</span></div>'; return; }
+    if (!ch){ $('#slots').innerHTML = `<div class="slot"><span class="st">${onClaude() ? 'Could not connect. Make sure you are signed in to Claude and the game has been shared with you.' : 'Could not reach the game server. Check your connection and open the link again.'}</span></div>`; return; }
     net.ch = ch;
     guestPublish(true);
   });
@@ -2001,7 +2182,7 @@ function padStart(code){
   pad = {code, seq:0, acts:[], lastRender:'', dish:null, msgN:0, t0: performance.now()};
   net = {role:'pad', code, ch:null, pubT:0, lastPub:''};
   openChannel(code).then(ch => {
-    if (!ch){ padStatus('Could not join', 'Make sure you are signed in to Claude on this phone and that the game has been shared with you.'); return; }
+    if (!ch){ padStatus('Could not join', onClaude() ? 'Make sure you are signed in to Claude on this phone and that the game has been shared with you.' : 'Could not reach the game. Check your connection and scan the code again.'); return; }
     net.ch = ch;
     ch.presence({role:'pad', seq:0, acts:[]});
   });
@@ -2017,6 +2198,8 @@ function padTick(){
     padStatus('Looking for the TV', performance.now() - pad.t0 > 9000 ? 'Can\'t find that room. Make sure the game is still open on the big screen, on the "Grab your phones" page.' : 'Connecting to the room…');
     return;
   }
+  // How this pad reaches the TV: straight over the Wi-Fi, or through the server
+  if (host.direct !== undefined){ const lk = host.direct ? '⚡ Direct' : 'Server'; if ($('#padLink').textContent !== lk){ $('#padLink').textContent = lk; $('#padLink').classList.toggle('direct', host.direct); } }
   const hp = host.presence, slots = hp.slots || {};
   const slot = me && slots.p1 === me.peer ? 'p1' : me && slots.p2 === me.peer ? 'p2' : null;
   const idx = slot === 'p1' ? 0 : 1;
@@ -2150,7 +2333,7 @@ document.querySelectorAll('#dishOpts .opt').forEach(b => b.addEventListener('cli
 $('#soloBtn').addEventListener('click', startSolo);
 $('#couchBtn').addEventListener('click', () => openLobby('couch'));
 $('#onlineBtn').addEventListener('click', () => openLobby('online'));
-$('#lobCancel').addEventListener('click', () => { if (location.hash) { try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} } $('#qr').style.display = '';$('#lobNote').textContent = 'Everyone who joins has to be signed in to Claude and needs access to this game. Share it with them from the Share menu first.'; toMenu(); });
+$('#lobCancel').addEventListener('click', () => { if (location.hash) { try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} } $('#qr').style.display = '';$('#lobNote').textContent = onClaude() ? 'Everyone who joins has to be signed in to Claude and needs access to this game. Share it with them from the Share menu first.' : ''; toMenu(); });
 $('#copyBtn').addEventListener('click', () => {
   const inp = $('#lobLink');
   const done = () => { $('#copyBtn').textContent = 'Copied'; setTimeout(() => { $('#copyBtn').textContent = 'Copy'; }, 1500); };
